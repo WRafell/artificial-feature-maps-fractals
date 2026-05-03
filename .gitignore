@@ -136,6 +136,7 @@ temp/
 
 
 # Custom
+.claude
 csv/
 local/
 *.ipynb
