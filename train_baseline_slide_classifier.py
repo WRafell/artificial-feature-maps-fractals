@@ -13,14 +13,14 @@ import pandas as pd
 
 RANDOM_SEED = 2024
 CLASSES = ['D', 'M', 'N']
-BACKBONE_NAME = 'resnet50'
+BACKBONE_NAME = 'vit_tiny'
 BATCH_SIZE =  64
 NUM_WORKERS = 4
 NUM_EPOCHS = 50
 ORGANS = ['stomach', 'colon']
 LEARNING_RATE = 0.001
 NUM_RUNS = 5
-SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
+SLIDES_PER_CLASS = [150, 100, 50, 25]
 DEVICE = 'cuda:0'
 
 

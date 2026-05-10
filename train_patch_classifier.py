@@ -12,7 +12,7 @@ import pandas as pd
 
 RANDOM_SEED = 2024
 CLASSES = ['D', 'M', 'N']
-BACKBONE_NAME = 'resnet50'
+BACKBONE_NAME = 'vit_tiny'
 BATCH_SIZE =  256
 RESIZE = 224
 NUM_WORKERS = 4
@@ -20,7 +20,8 @@ NUM_EPOCHS = 50
 PATIENCE = 3
 ORGANS = ['stomach', 'colon']
 LEARNING_RATE = 0.001
-SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
+# SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
+SLIDES_PER_CLASS = [140, 100, 50, 25]
 DEVICE = 'cuda:0'
 
 
@@ -58,8 +59,20 @@ def main(organ: str, slides_per_class: int, writer: TextIO):
     Path(f"models/patch_level/{BACKBONE_NAME}").mkdir(exist_ok=True, parents=True)
     model_dir=f"models/patch_level/{BACKBONE_NAME}/{organ}_patch_classifier_{slides_per_class}.pt"
 
-    backbone = torchvision.models.resnet50(weights='ResNet50_Weights.DEFAULT')
-    backbone.fc = torch.nn.Linear(backbone.fc.in_features, len(CLASSES))
+    if BACKBONE_NAME == 'resnet50':
+        backbone = torchvision.models.resnet50(weights='ResNet50_Weights.DEFAULT')
+        backbone.fc = torch.nn.Linear(backbone.fc.in_features, len(CLASSES))
+    elif BACKBONE_NAME == 'vit_tiny':
+        import timm
+        backbone = timm.create_model('vit_tiny_patch16_224', pretrained=True, num_classes=len(CLASSES))
+    elif BACKBONE_NAME == 'ctranspath':
+        from src.utils_patch_classifier import load_patch_classifier
+        backbone = load_patch_classifier(
+            backbone_name='ctranspath',
+            num_classes=len(CLASSES),
+        )
+    else:
+        raise NotImplementedError(f"{BACKBONE_NAME} not implemented")
     backbone = backbone.to(DEVICE)
 
     best_model = train_patch_classifier(

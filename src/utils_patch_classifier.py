@@ -5,7 +5,78 @@ from typing import TextIO
 from tqdm import tqdm
 import torch
 import random
+import torchvision
 import torchvision.transforms as T
+
+
+CTRANSPATH_WEIGHTS_PATH = 'models/ctranspath.pth'
+
+
+def load_patch_classifier(
+    backbone_name: str,
+    num_classes: int,
+    weights_path: str | None = None,
+) -> torch.nn.Module:
+    """Build a patch classifier by name. Optionally load a trained checkpoint.
+
+    Returns a model whose forward(x) -> logits over num_classes.
+    """
+    if backbone_name == 'resnet50':
+        model = torchvision.models.resnet50()
+        model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+    elif backbone_name == 'vit_tiny':
+        import timm
+        model = timm.create_model('vit_tiny_patch16_224', pretrained=False, num_classes=num_classes)
+    elif backbone_name == 'ctranspath':
+        from src.encoders.ctranspath import build_ctranspath_classifier
+        model = build_ctranspath_classifier(
+            num_classes=num_classes,
+            weights_path=CTRANSPATH_WEIGHTS_PATH,
+            freeze_backbone=True,
+        )
+    else:
+        raise NotImplementedError(f"{backbone_name} not implemented")
+
+    if weights_path is not None:
+        model.load_state_dict(torch.load(weights_path))
+    return model
+
+
+def load_patch_encoder(
+    backbone_name: str,
+    weights_path: str | None = None,
+    num_classes_for_loading: int = 3,
+) -> tuple[torch.nn.Module, int]:
+    """Build a patch encoder (no classification head). Returns (model, feature_dim).
+
+    For resnet50 / vit_tiny, the trained classifier is loaded then the head is
+    stripped — `weights_path` should point at the trained classifier checkpoint.
+    For ctranspath, returns the raw pretrained encoder (no extra weights loaded).
+    """
+    if backbone_name == 'resnet50':
+        model = torchvision.models.resnet50()
+        model.fc = torch.nn.Linear(model.fc.in_features, num_classes_for_loading)
+        if weights_path is not None:
+            model.load_state_dict(torch.load(weights_path))
+        model.layer4 = torch.nn.Identity()
+        model.fc = torch.nn.Identity()
+        feature_dim = 1024
+    elif backbone_name == 'vit_tiny':
+        import timm
+        model = timm.create_model('vit_tiny_patch16_224', pretrained=False, num_classes=num_classes_for_loading)
+        if weights_path is not None:
+            model.load_state_dict(torch.load(weights_path))
+        model.head = torch.nn.Identity()
+        feature_dim = 192
+    elif backbone_name == 'ctranspath':
+        from src.encoders.ctranspath import build_ctranspath_encoder, CTRANSPATH_FEATURE_DIM
+        model = build_ctranspath_encoder(CTRANSPATH_WEIGHTS_PATH)
+        feature_dim = CTRANSPATH_FEATURE_DIM
+    else:
+        raise NotImplementedError(f"{backbone_name} not implemented")
+
+    model.eval()
+    return model, feature_dim
 
 
 class GaussianBlur(object):
@@ -73,12 +144,15 @@ def train_patch_classifier(
         saving_dir: str) -> torch.nn.Module:
     
     backbone.to(device)
-    optimizer = torch.optim.Adam(backbone.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, backbone.parameters()),
+        lr=learning_rate,
+    )
     loss_function = torch.nn.CrossEntropyLoss()
     
     lowest_val_loss = 1e3
     best_model = None
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
     for epoch in range(num_epochs):
         train_loss = 0.
         train_corrects = 0
@@ -88,7 +162,7 @@ def train_patch_classifier(
             labels = batch[1].to(device)
 
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = backbone(inputs)
                 loss = loss_function(outputs, labels)
             scaler.scale(loss).backward()

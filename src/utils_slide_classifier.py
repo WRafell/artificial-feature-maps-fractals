@@ -37,7 +37,7 @@ def train_slide_classifier(
     metrics = {}
     metrics = {key: [] for key in ['train_loss', 'train_acc', 'val_loss', 'val_acc']}
     best_model = deepcopy(model)
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
     for epoch in range(num_epochs):
 
         # TRAINING
@@ -49,7 +49,7 @@ def train_slide_classifier(
             labels = batch[1].to(device).long()
             
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = model(inputs)
                 loss = loss_function(outputs, labels)
             scaler.scale(loss).backward()

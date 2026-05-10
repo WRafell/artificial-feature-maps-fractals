@@ -11,7 +11,8 @@ import pytorch_lightning as pl
 
 SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
 RANDOM_SEED = 2024
-DATADIR = "patch_latents/baseline/resnet50"
+BACKBONE_NAME = 'resnet50'
+DATADIR = f"patch_latents/baseline/{BACKBONE_NAME}"
 BATCH_SIZE = 1
 MIL_MODELS = ['meanpooling', 'maxpooling','ABMIL', 'GABMIL', 'DSMIL', 'DTFD-MIL', 'TransMIL']
 # MIL_MODELS = ['TransMIL']
@@ -19,7 +20,9 @@ NUM_EPOCHS = 50
 DEVICE = 'cuda:0'
 CLASSES = ['D', 'M', 'N']
 NUM_CLASSES = 3
-NUM_FEATS = 1024
+# Feature dim depends on the patch encoder used to build the latents:
+#   resnet50 (layer4 stripped) = 1024, vit_tiny = 192, ctranspath = 768
+NUM_FEATS = {'resnet50': 1024, 'vit_tiny': 192, 'ctranspath': 768}[BACKBONE_NAME]
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-2
 ACCUMULATE_GRAD_BATCHES = 1

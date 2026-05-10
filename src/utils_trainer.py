@@ -16,7 +16,7 @@ def train_patch_classifier(
     backbone.to(device)
     optimizer = torch.optim.SGD(backbone.parameters(), lr=learning_rate)
     loss_function = torch.nn.CrossEntropyLoss()
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
     for epoch in range(max_epoch):
         running_loss, running_corrects = 0., 0.
         total_inputs = 0
@@ -26,7 +26,7 @@ def train_patch_classifier(
             labels = batch[1].cuda()
 
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = backbone(inputs)
                 loss = loss_function(outputs, labels)
             scaler.scale(loss).backward()

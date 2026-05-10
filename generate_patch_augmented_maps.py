@@ -1,9 +1,8 @@
 from src.utils_feature_maps import Transforms, build_feature_map
+from src.utils_patch_classifier import load_patch_classifier
 from pathlib import Path
 from tqdm import tqdm
-import torch
 import random
-import torchvision
 import numpy as np
 import pandas as pd
 
@@ -40,9 +39,11 @@ def main(organ: str, slides_per_class: int):
     patch_model_dir = f"models/patch_level/{BACKBONE_NAME}/{organ}_patch_classifier_{slides_per_class}.pt"
     assert Path(patch_model_dir).exists()
     print(f"Patch classifier: {patch_model_dir}")
-    patch_classifier = torchvision.models.resnet50()
-    patch_classifier.fc = torch.nn.Linear(patch_classifier.fc.in_features, len(CLASSES))
-    patch_classifier.load_state_dict(torch.load(patch_model_dir))
+    patch_classifier = load_patch_classifier(
+        backbone_name=BACKBONE_NAME,
+        num_classes=len(CLASSES),
+        weights_path=patch_model_dir,
+    )
 
     transforms = Transforms().augment_transforms
 
