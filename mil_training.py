@@ -15,7 +15,6 @@ BACKBONE_NAME = 'resnet50'
 DATADIR = f"patch_latents/baseline/{BACKBONE_NAME}"
 BATCH_SIZE = 1
 MIL_MODELS = ['meanpooling', 'maxpooling','ABMIL', 'GABMIL', 'DSMIL', 'DTFD-MIL', 'TransMIL']
-# MIL_MODELS = ['TransMIL']
 NUM_EPOCHS = 50
 DEVICE = 'cuda:0'
 CLASSES = ['D', 'M', 'N']

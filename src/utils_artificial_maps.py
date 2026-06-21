@@ -103,23 +103,41 @@ def swap_channels(img, t=0.5, p=0.01):
 
 
 def creature_artificial_map(
-        create_fake_cell: callable, 
-        label: int, 
+        create_fake_cell: callable,
+        label: int,
         num_features: int,
-        height: int, 
-        width: int, 
-        num_slices: int = 3, 
+        height: int,
+        width: int,
+        num_slices: int = 3,
         radius: int = 2,
-        scale: float = 0.95, 
-        is_normal: bool = False):
+        scale: float = 0.95,
+        is_normal: bool = False,
+        pos_low: float = 0.8,
+        noise_std: float = 0.1,
+        score_mode: str = 'uniform'):
+    """
+    Build one artificial CAM.
 
+    Score-design knobs (for the confidence-score sensitivity ablation, R4.2):
+        pos_low (float): lower bound of the positive-label logit, sampled
+            U(pos_low, 1). Higher -> stronger positive confidence.
+            Default 0.8 reproduces the main pipeline.
+        noise_std (float): std of the additive Gaussian noise on the logits.
+            Default 0.1 reproduces the main pipeline. 0.0 disables noise.
+        score_mode (str): how positive-label scores are assigned.
+            'uniform'  -> positive logit ~ U(pos_low, 1) per pixel (default).
+            'constant' -> positive logit = pos_low (no per-pixel spread).
+            'random'   -> no class signal injected; scores are a random simplex
+                          (decouples the fractal spatial prior from the
+                          confidence injection).
+    """
     if num_slices > 2:
         h, w = height//4, width//4
     else:
         h, w = height//3, width//3
 
     cell = create_fake_cell(height=h, width=w, scale=scale, radius=radius)
- 
+
     if np.random.rand() > 0.5:
         bounding = min(cell.shape)
         cell = center_crop(cell, bounding)
@@ -133,7 +151,7 @@ def creature_artificial_map(
     offset = np.array([0, 0])
     offset[0] = feature_map.shape[0] // (num_slices+1)
     offset[1] = feature_map.shape[1] // (num_slices+1)
-    for i in range(num_slices):        
+    for i in range(num_slices):
         if is_normal:
             base_feature = np.random.uniform(0, 0.2, (h, w, num_features))
             feature_cell = F.softmax(torch.tensor(base_feature), dim=2).numpy()
@@ -141,11 +159,23 @@ def creature_artificial_map(
             final_cell = torch.tensor(feature_cell * noise) * base_cell
         else:
             base_feature = np.random.uniform(-1, 0, (h, w, num_features))
-            feature = np.random.uniform(0.8, 1, (h, w))
-            base_feature[:, :, label] = feature
+            if score_mode == 'uniform':
+                feature = np.random.uniform(pos_low, 1, (h, w))
+                base_feature[:, :, label] = feature
+            elif score_mode == 'constant':
+                base_feature[:, :, label] = pos_low
+            elif score_mode == 'random':
+                # no class signal: keep the uniform random logits, do not boost
+                # the positive label. Tests the fractal spatial prior alone.
+                pass
+            else:
+                raise ValueError(f"unknown score_mode: {score_mode}")
             feature_cell = F.softmax(torch.tensor(base_feature), dim=2).numpy()
-            feature_cell = feature_cell * base_cell        
-            noise = np.random.normal(0, 0.1, size=feature_cell.shape)
+            feature_cell = feature_cell * base_cell
+            if noise_std > 0:
+                noise = np.random.normal(0, noise_std, size=feature_cell.shape)
+            else:
+                noise = 0.0
             swap_cell = swap_channels(feature_cell)
             final_cell = torch.tensor(swap_cell + noise)
             final_cell = F.softmax(final_cell, dim=2).numpy() * base_cell

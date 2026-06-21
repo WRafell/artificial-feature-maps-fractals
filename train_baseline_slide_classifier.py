@@ -13,22 +13,22 @@ import pandas as pd
 
 RANDOM_SEED = 2024
 CLASSES = ['D', 'M', 'N']
-BACKBONE_NAME = 'vit_tiny'
+BACKBONE_NAME = 'ctranspath'
 BATCH_SIZE =  64
 NUM_WORKERS = 4
 NUM_EPOCHS = 50
 ORGANS = ['stomach', 'colon']
 LEARNING_RATE = 0.001
 NUM_RUNS = 5
-SLIDES_PER_CLASS = [150, 100, 50, 25]
+SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
 DEVICE = 'cuda:0'
 
 
 def main(organ: str, slides_per_class: int, writer: TextIO):
 
     # LOADING DATA
-    feature_map_dir = f"feature_maps/baseline/{BACKBONE_NAME}/{organ}/{slides_per_class}"
-    assert Path(feature_map_dir).exists(), "Feature maps directory does not exist"
+    feature_map_dir = f"./local/feature_maps/baseline/{BACKBONE_NAME}/{organ}/{slides_per_class}"
+    assert Path(feature_map_dir).exists(), f"Feature maps directory does not exist: {feature_map_dir}"
     print(f"Feature maps directory: {feature_map_dir}") 
     print(f"Feature maps directory: {feature_map_dir}", file=writer) 
 

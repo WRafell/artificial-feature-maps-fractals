@@ -70,20 +70,23 @@ def build_ctranspath_encoder(weights_path: str) -> nn.Module:
 
     Returns a model whose forward(x) -> (B, 768) feature vector.
     """
-    try:
-        import timm
-        encoder = timm.create_model(
-            "swin_tiny_patch4_window7_224",
-            embed_layer=ConvStem,
-            pretrained=False,
-            num_classes=0,
-        )
-    except TypeError as e:
-        raise RuntimeError(
-            "CTransPath requires `timm==0.5.4` (newer timm dropped the "
-            "`embed_layer` kwarg of swin_tiny_patch4_window7_224). "
-            "Install with: pip install timm==0.5.4"
-        ) from e
+    import timm
+    encoder = timm.create_model(
+        "swin_tiny_patch4_window7_224",
+        pretrained=False,
+        num_classes=0,
+    )
+
+    # CTransPath replaces the standard single-Conv patch embedding with a
+    # 3-block ConvStem. Newer timm versions silently ignore the `embed_layer`
+    # kwarg passed at create_model time, so swap it explicitly here.
+    encoder.patch_embed = ConvStem(
+        img_size=224,
+        patch_size=4,
+        in_chans=3,
+        embed_dim=96,
+        norm_layer=nn.LayerNorm,
+    )
 
     state = torch.load(weights_path, map_location="cpu")
     if isinstance(state, dict) and "model" in state:
@@ -94,6 +97,11 @@ def build_ctranspath_encoder(weights_path: str) -> nn.Module:
         f"CTransPath weights loaded from {weights_path} "
         f"(missing={len(msg.missing_keys)}, unexpected={len(msg.unexpected_keys)})"
     )
+    if msg.missing_keys:
+        print(f"  missing keys: {msg.missing_keys}")
+    if msg.unexpected_keys:
+        critical = [k for k in msg.unexpected_keys if not k.startswith('head.')]
+        print(f"  unexpected keys (non-head): {critical}")
     return encoder
 
 

@@ -8,12 +8,12 @@ import pandas as pd
 
 
 RANDOM_SEED = 2024
-BACKBONE_NAME = 'vit_tiny'
+BACKBONE_NAME = 'ctranspath'
 ORGANS = ['stomach', 'colon']
 CLASSES = ['D', 'M', 'N']
 LSIZE = 256
 CSIZE = 128
-SLIDES_PER_CLASS = [140, 100, 50, 25]
+SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
 TRANSFORMS = 'baseline'
 
 

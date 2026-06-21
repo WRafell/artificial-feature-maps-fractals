@@ -17,7 +17,7 @@ CSIZE = 128
 
 def main():
     for label, class_ in enumerate(CLASSES):
-        basedir = f"feature_maps/artificial/{FAKE_TYPE}/{class_}"
+        basedir = f"./local/feature_maps/artificial/{FAKE_TYPE}/{class_}"
         Path(basedir).mkdir(exist_ok=True, parents=True)
         for k in tqdm(range(K), total=K, desc=class_):
             num_slices = np.random.choice([2,3,4], p=[0.15, 0.7, 0.15])

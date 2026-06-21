@@ -12,7 +12,7 @@ import pandas as pd
 
 RANDOM_SEED = 2024
 CLASSES = ['D', 'M', 'N']
-BACKBONE_NAME = 'vit_tiny'
+BACKBONE_NAME = 'ctranspath'
 BATCH_SIZE =  256
 RESIZE = 224
 NUM_WORKERS = 4
@@ -20,8 +20,7 @@ NUM_EPOCHS = 50
 PATIENCE = 3
 ORGANS = ['stomach', 'colon']
 LEARNING_RATE = 0.001
-# SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
-SLIDES_PER_CLASS = [140, 100, 50, 25]
+SLIDES_PER_CLASS = [200, 150, 100, 50, 25]
 DEVICE = 'cuda:0'
 
 
@@ -97,7 +96,7 @@ def main(organ: str, slides_per_class: int, writer: TextIO):
 
 
 if __name__=='__main__':
-    for organ in ['colon', 'stomach']:
+    for organ in ['stomach']:
         for slides_per_class in SLIDES_PER_CLASS:
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             writer_file = f"logs/patch_level/{BACKBONE_NAME}_{organ}_{slides_per_class}.txt"

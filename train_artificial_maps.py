@@ -11,18 +11,23 @@ import numpy as np
 import pandas as pd
 
 
-RANDOM_SEED = 2024
+RANDOM_SEED = 0
 CLASSES = ['D', 'M', 'N']
-BACKBONE_NAME = 'resnet50'
+BACKBONE_NAME = 'ctranspath'         # patch-level backbone (selects feature-map dir)
+SLIDE_BACKBONE_NAME = 'resnet50'     # slide-level backbone: 'resnet50' or 'vit_tiny'
 ARTIFICIAL_TYPE = 'fractals'
 BATCH_SIZE =  128
 NUM_WORKERS = 4
-NUM_EPOCHS = 50
-ORGANS = ['stomach', 'colon']
-LEARNING_RATE = 0.001
-NUM_RUNS = 5
-ARTIFICIAL_PER_CLASS = [0, 25, 50, 100, 150, 200, 500, 1000]
-REAL_PER_CLASS = [200, 150, 100, 50, 25, 0][::-1]
+NUM_EPOCHS = 20
+ORGANS = ['colon']
+LEARNING_RATE = {
+    'resnet50': 1e-3,
+    'vit_tiny': 1e-4,
+}[SLIDE_BACKBONE_NAME]
+NUM_RUNS = 3
+ARTIFICIAL_PER_CLASS = [0, 25, 50, 100, 150]
+ARTIFICIAL_PER_CLASS = [25, 50, 100, 150]
+REAL_PER_CLASS = [25]
 DEVICE = 'cuda:0'
 
 
@@ -30,8 +35,8 @@ def main(organ: str, artificial_type: str, real_per_class: int, artificial_per_c
 
     # LOADING DATA
     if real_per_class > 0:
-        train_feature_map_dir = f"feature_maps/baseline/{BACKBONE_NAME}/{organ}/{real_per_class}"
-        assert Path(train_feature_map_dir).exists(), "Feature maps directory does not exist"
+        train_feature_map_dir = f"./local/feature_maps/baseline/{BACKBONE_NAME}/{organ}/{real_per_class}"
+        assert Path(train_feature_map_dir).exists(), f"Feature maps directory does not exist: {train_feature_map_dir}"
         print(f"Train feature maps directory: {train_feature_map_dir}") 
         print(f"Train feature maps directory: {train_feature_map_dir}", file=writer)     
         train_feature_maps = [
@@ -42,8 +47,8 @@ def main(organ: str, artificial_type: str, real_per_class: int, artificial_per_c
         train_feature_maps = pd.DataFrame(train_feature_maps, columns=['subset', 'label', 'data_path'])
 
     # FOR VALIDATION AND TESTING
-    test_feature_map_dir = f"feature_maps/baseline/{BACKBONE_NAME}/{organ}/200"
-    assert Path(test_feature_map_dir).exists(), "Feature maps directory does not exist"
+    test_feature_map_dir = f"./local/feature_maps/baseline/{BACKBONE_NAME}/{organ}/140"
+    assert Path(test_feature_map_dir).exists(), f"Feature maps directory does not exist: {train_feature_map_dir}"
     test_feature_maps = [
         (subset, label, str(file))
         for subset in ['val', 'test']
@@ -52,7 +57,7 @@ def main(organ: str, artificial_type: str, real_per_class: int, artificial_per_c
     ]
     test_feature_maps = pd.DataFrame(test_feature_maps, columns=['subset', 'label', 'data_path'])
 
-    artificial_map_dir = f"feature_maps/artificial/{artificial_type}"
+    artificial_map_dir = f"./local/feature_maps/artificial/{artificial_type}"
     assert Path(artificial_map_dir).exists(), "Artificial maps directory does not exist"
     print(f"Feature maps directory: {artificial_map_dir}") 
     print(f"Feature maps directory: {artificial_map_dir}", file=writer) 
@@ -97,8 +102,14 @@ def main(organ: str, artificial_type: str, real_per_class: int, artificial_per_c
 
 
     # TRAINING
-    model = torchvision.models.resnet50(weights='ResNet50_Weights.DEFAULT')
-    model.fc = torch.nn.Linear(model.fc.in_features, len(CLASSES))
+    if SLIDE_BACKBONE_NAME == 'resnet50':
+        model = torchvision.models.resnet50(weights='ResNet50_Weights.DEFAULT')
+        model.fc = torch.nn.Linear(model.fc.in_features, len(CLASSES))
+    elif SLIDE_BACKBONE_NAME == 'vit_tiny':
+        import timm
+        model = timm.create_model('vit_tiny_patch16_224', pretrained=True, num_classes=len(CLASSES))
+    else:
+        raise NotImplementedError(f"slide backbone {SLIDE_BACKBONE_NAME} not implemented")
     slide_model, train_metrics = train_slide_classifier(
         model=model,
         train_loader=train_loader,
@@ -132,14 +143,39 @@ if __name__=='__main__':
     for organ in ORGANS:
         basedir = f"logs/slide_level/{organ}/artificial/{ARTIFICIAL_TYPE}/"
         Path(basedir).mkdir(exist_ok=True, parents=True)
-        writer_file = f"{basedir}/{BACKBONE_NAME}.txt"
+        # Always tag log with both patch and slide backbones so different slide-level
+        # models do not share the same log file and trigger false resume-skips.
+        writer_file = f"{basedir}/{BACKBONE_NAME}__slide_{SLIDE_BACKBONE_NAME}.txt"
+        print(f"[{organ}] log file: {writer_file}")
         train_results = {}
         test_results = {}
-        with open(writer_file, 'w') as writer:  
-            print(f"Random seed: {RANDOM_SEED}\n Using {ARTIFICIAL_TYPE} as artificial map", file=writer)      
+
+        # Parse existing log for already-completed (real, artificial) combos so
+        # we can resume without overwriting prior results.
+        done_combos: set[tuple[int, int]] = set()
+        if Path(writer_file).exists():
+            import re
+            pat = re.compile(
+                r"Organ:\s*\S+\.\s*Real maps per class:\s*(\d+)\.\s*Artificial maps per class:\s*(\d+)"
+            )
+            with open(writer_file) as f:
+                log_text = f.read()
+            for match in re.finditer(
+                pat.pattern + r"[\s\S]*?ACCURACY:", log_text
+            ):
+                done_combos.add((int(match.group(1)), int(match.group(2))))
+            print(f"[{organ}] resuming: {len(done_combos)} combos already done.")
+
+        with open(writer_file, 'a') as writer:
+            print(f"Random seed: {RANDOM_SEED}\n Using {ARTIFICIAL_TYPE} as artificial map", file=writer)
             for real_per_class in REAL_PER_CLASS:
+                # (real=0 allowed; resume guard handles done combos)
                 for artificial_per_class in ARTIFICIAL_PER_CLASS:
-                    if (real_per_class == 0) and (artificial_per_class == 0): continue
+                    if (artificial_per_class == 0) and (real_per_class == 0): continue
+                    # if (artificial_per_class == 0): continue
+                    # if (real_per_class, artificial_per_class) in done_combos:
+                    #     print(f"[skip] {organ} real={real_per_class} artificial={artificial_per_class} — already done")
+                    #     continue
                     print('='*20, file=writer)
                     print(f"Organ: {organ}. Real maps per class: {real_per_class}. Artificial maps per class: {artificial_per_class}") 
                     print(f"Organ: {organ}. Real maps per class: {real_per_class}. Artificial maps per class: {artificial_per_class}", file=writer) 
